@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Naruto AR — Jutsu Hand Seals</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #06060c;
+      color: #e8e4d0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      gap: 14px;
+    }
+
+    header { text-align: center; }
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: #f97316;
+      text-transform: uppercase;
+      text-shadow: 0 0 30px rgba(249,115,22,0.4);
+    }
+    header p { font-size: 0.78rem; color: #4b5563; margin-top: 4px; }
+
+    #status {
+      font-size: 0.72rem;
+      padding: 5px 16px;
+      border-radius: 20px;
+      border: 1px solid #1f2937;
+      color: #6b7280;
+      background: #0f172a;
+      letter-spacing: 0.08em;
+      transition: all 0.3s;
+    }
+    #status.active  { border-color: #22c55e; color: #22c55e; background: #052e16; }
+    #status.jutsu   { border-color: #f97316; color: #f97316; background: #1c0a00; }
+
+    #camera-container {
+      position: relative;
+      width: 640px;
+      max-width: 100%;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 2px solid #1e293b;
+      box-shadow: 0 0 60px rgba(249,115,22,0.12), 0 0 120px rgba(249,115,22,0.05);
+    }
+
+    #input-video {
+      display: block;
+      width: 100%;
+      height: auto;
+      transform: scaleX(-1);
+    }
+    #output-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      transform: scaleX(-1);
+    }
+
+    /* Seal guide cards */
+    #seal-guide {
+      width: 640px;
+      max-width: 100%;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .seal-card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .seal-card.triggered {
+      border-color: #f97316;
+      box-shadow: 0 0 16px rgba(249,115,22,0.3);
+    }
+    .seal-card .emoji  { font-size: 1.6rem; }
+    .seal-card .name   { font-size: 0.65rem; color: #f97316; letter-spacing: 0.08em; margin-top: 4px; font-weight: bold; }
+    .seal-card .hint   { font-size: 0.6rem;  color: #4b5563; margin-top: 3px; line-height: 1.4; }
+
+    #info-bar {
+      width: 640px;
+      max-width: 100%;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: #374151;
+    }
+    #info-bar span { color: #22c55e; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🍃 Naruto Jutsu AR</h1>
+  <p>Make a hand seal · Awaken your jutsu</p>
+</header>
+
+<div id="status">⏳ LOADING MEDIAPIPE AI MODEL...</div>
+
+<div id="camera-container">
+  <video id="input-video" playsinline></video>
+  <canvas id="output-canvas"></canvas>
+</div>
+
+<!-- Seal guide — lights up when a seal is detected -->
+<div id="seal-guide">
+  <div class="seal-card" id="card-clone">
+    <div class="emoji">🌀</div>
+    <div class="name">SHADOW CLONE</div>
+    <div class="hint">Touch index + middle fingertips together</div>
+  </div>
+  <div class="seal-card" id="card-rasengan">
+    <div class="emoji">⚡</div>
+    <div class="name">RASENGAN</div>
+    <div class="hint">Make a tight fist</div>
+  </div>
+  <div class="seal-card" id="card-fireball">
+    <div class="emoji">🔥</div>
+    <div class="name">FIREBALL</div>
+    <div class="hint">Open palm, all fingers extended</div>
+  </div>
+  <div class="seal-card" id="card-rat">
+    <div class="emoji">🐀</div>
+    <div class="name">RAT SEAL</div>
+    <div class="hint">Index + middle fingers up</div>
+  </div>
+  <div class="seal-card" id="card-ram">
+    <div class="emoji">🐏</div>
+    <div class="name">RAM SEAL</div>
+    <div class="hint">Only index finger pointing up</div>
+  </div>
+</div>
+
+<div id="info-bar">
+  <div>FPS: <span id="fps-display">--</span></div>
+  <div>Landmarks: <span id="landmark-count">0</span></div>
+  <div>Hand: <span id="hand-label">none</span></div>
+</div>
+
+<script>
+// ── Elements ───────────────────────────────────────────────────
+const videoElement    = document.getElementById('input-video');
+const canvasElement   = document.getElementById('output-canvas');
+const statusEl        = document.getElementById('status');
+const landmarkCountEl = document.getElementById('landmark-count');
+const fpsEl           = document.getElementById('fps-display');
+const handLabelEl     = document.getElementById('hand-label');
+const ctx             = canvasElement.getContext('2d');
+
+let lastFrameTime = performance.now();
+let frameCount = 0;
+
+// ── Landmark connections ───────────────────────────────────────
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20],
+  [5,9],[9,13],[13,17]
+];
+
+// ── Gesture helpers ────────────────────────────────────────────
+function isFingerExtended(lm, tip, mid) { return lm[tip].y < lm[mid].y; }
+function distance(a, b) { return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+
+function getFingerState(lm) {
+  return {
+    thumb:  isFingerExtended(lm, 4, 3),
+    index:  isFingerExtended(lm, 8, 6),
+    middle: isFingerExtended(lm, 12, 10),
+    ring:   isFingerExtended(lm, 16, 14),
+    pinky:  isFingerExtended(lm, 20, 18),
+  };
+}
+
+// ── Seal detectors ─────────────────────────────────────────────
+function detectSeal(lm) {
+  const f = getFingerState(lm);
+  if (distance(lm[8], lm[12]) < 0.05)                         return 'clone';
+  if (!f.index && !f.middle && !f.ring && !f.pinky)            return 'rasengan';
+  if (f.index && f.middle && f.ring && f.pinky)                return 'fireball';
+  if (f.index && f.middle && !f.ring && !f.pinky)              return 'rat';
+  if (f.index && !f.middle && !f.ring && !f.pinky)             return 'ram';
+  return null;
+}
+
+// ── Shadow Clone state ─────────────────────────────────────────
+let cloneSnapshot = null;
+let cloneActive   = false;
+let cloneTimer    = null;
+
+function captureCloneSnapshot() {
+  cloneSnapshot = ctx.getImageData(0, 0, canvasElement.width, canvasElement.height);
+}
+
+function drawShadowCloneEffect() {
+  if (!cloneSnapshot) return;
+  const offsets = [-canvasElement.width * 0.33, canvasElement.width * 0.33];
+
+  offsets.forEach(xOffset => {
+    ctx.save();
+    ctx.translate(xOffset, 0);
+    const temp = document.createElement('canvas');
+    temp.width  = canvasElement.width;
+    temp.height = canvasElement.height;
+    temp.getContext('2d').putImageData(cloneSnapshot, 0, 0);
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(temp, 0, 0);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgba(20, 60, 180, 0.45)';
+    ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  });
+}
+
+// ── Rasengan state ─────────────────────────────────────────────
+let rasengAngle = 0;
+
+function drawRasengantEffect(lm) {
+  const cx = lm[9].x * canvasElement.width;
+  const cy = lm[9].y * canvasElement.height;
+  const r  = 55;
+  rasengAngle += 0.08;
+
+  const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, r);
+  glow.addColorStop(0,   'rgba(140, 210, 255, 0.95)');
+  glow.addColorStop(0.5, 'rgba(60, 130, 255, 0.5)');
+  glow.addColorStop(1,   'rgba(0, 40, 200, 0)');
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = glow;
+  ctx.fill();
+
+  [0, Math.PI/3, (2*Math.PI)/3].forEach((offset, i) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rasengAngle + offset);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.9, r * 0.32, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(180, 230, 255, ${0.7 - i * 0.15})`;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fill();
+}
+
+// ── Fireball state ─────────────────────────────────────────────
+let fireParticles = [];
+
+function drawFireballEffect(lm) {
+  const ox = lm[9].x * canvasElement.width;
+  const oy = lm[9].y * canvasElement.height;
+
+  for (let i = 0; i < 5; i++) {
+    fireParticles.push({
+      x: ox + (Math.random() - 0.5) * 30,
+      y: oy,
+      vx: (Math.random() - 0.5) * 3,
+      vy: -(Math.random() * 4 + 2),
+      size: Math.random() * 18 + 8,
+      life: 1.0,
+      decay: Math.random() * 0.04 + 0.02
+    });
+  }
+
+  fireParticles = fireParticles.filter(p => p.life > 0);
+  fireParticles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+    p.size *= 0.97;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, ${Math.floor(p.life * 200)}, 0, ${p.life})`;
+    ctx.fill();
+  });
+}
+
+// ── HUD text overlay ───────────────────────────────────────────
+const SEAL_LABELS = {
+  clone:    'SHADOW CLONE JUTSU 🌀',
+  rasengan: 'RASENGAN ⚡',
+  fireball: 'FIRE STYLE: FIREBALL 🔥',
+  rat:      'RAT SEAL 🐀',
+  ram:      'RAM SEAL 🐏',
+};
+
+function drawHUD(text) {
+  ctx.font = 'bold 20px Courier New';
+  const tw = ctx.measureText(text).width;
+  const pad = 14;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.beginPath();
+  ctx.roundRect(canvasElement.width/2 - tw/2 - pad, 14, tw + pad*2, 42, 8);
+  ctx.fill();
+
+  ctx.strokeStyle = '#f97316';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#f97316';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvasElement.width / 2, 35);
+}
+
+// ── Card highlight helper ──────────────────────────────────────
+const cardMap = { clone: 'card-clone', rasengan: 'card-rasengan', fireball: 'card-fireball', rat: 'card-rat', ram: 'card-ram' };
+let lastHighlighted = null;
+
+function highlightCard(sealKey) {
+  if (lastHighlighted && lastHighlighted !== sealKey) {
+    document.getElementById(cardMap[lastHighlighted])?.classList.remove('triggered');
+  }
+  if (sealKey) {
+    document.getElementById(cardMap[sealKey])?.classList.add('triggered');
+  }
+  lastHighlighted = sealKey;
+}
+
+// ── Drawing ────────────────────────────────────────────────────
+function drawLandmarks(lm) {
+  lm.forEach((pt, i) => {
+    const x = pt.x * canvasElement.width;
+    const y = pt.y * canvasElement.height;
+    const color = (i === 0 || i === 9) ? '#22c55e' : i <= 4 ? '#a78bfa' : '#f97316';
+    ctx.beginPath();
+    ctx.arc(x, y, i === 0 ? 8 : 5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+}
+
+function drawConnections(lm) {
+  HAND_CONNECTIONS.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(lm[a].x * canvasElement.width, lm[a].y * canvasElement.height);
+    ctx.lineTo(lm[b].x * canvasElement.width, lm[b].y * canvasElement.height);
+    ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+}
+
+function updateFPS() {
+  frameCount++;
+  const now = performance.now();
+  const elapsed = now - lastFrameTime;
+  if (elapsed >= 1000) {
+    fpsEl.textContent = Math.round(frameCount / (elapsed / 1000));
+    frameCount = 0;
+    lastFrameTime = now;
+  }
+}
+
+// ── Main callback ──────────────────────────────────────────────
+function onResults(results) {
+  canvasElement.width  = videoElement.videoWidth;
+  canvasElement.height = videoElement.videoHeight;
+  ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+  updateFPS();
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    landmarkCountEl.textContent = '0';
+    handLabelEl.textContent = 'none';
+    statusEl.textContent = '👋 SHOW YOUR HAND TO THE CAMERA';
+    statusEl.className = '';
+    highlightCard(null);
+    return;
+  }
+
+  landmarkCountEl.textContent = results.multiHandLandmarks.length * 21;
+  handLabelEl.textContent = results.multiHandedness
+    ? results.multiHandedness.map(h => h.label).join(' + ')
+    : 'detected';
+
+  let activeSeal = null;
+
+  results.multiHandLandmarks.forEach(lm => {
+    drawConnections(lm);
+    drawLandmarks(lm);
+    const seal = detectSeal(lm);
+    if (seal) activeSeal = seal;
+
+    if (seal === 'clone') {
+      if (!cloneActive) {
+        captureCloneSnapshot();
+        cloneActive = true;
+        clearTimeout(cloneTimer);
+        cloneTimer = setTimeout(() => { cloneActive = false; cloneSnapshot = null; }, 2500);
+      }
+    } else if (seal === 'rasengan') {
+      drawRasengantEffect(lm);
+    } else if (seal === 'fireball') {
+      drawFireballEffect(lm);
+    }
+  });
+
+  // Draw shadow clone on top of everything else
+  if (cloneActive) drawShadowCloneEffect();
+
+  if (activeSeal) {
+    drawHUD(SEAL_LABELS[activeSeal]);
+    highlightCard(activeSeal);
+    statusEl.textContent = '🔥 ' + SEAL_LABELS[activeSeal];
+    statusEl.className = 'jutsu';
+  } else {
+    highlightCard(null);
+    statusEl.textContent = '✅ TRACKING — MAKE A SEAL!';
+    statusEl.className = 'active';
+  }
+}
+
+// ── MediaPipe setup ────────────────────────────────────────────
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+hands.onResults(onResults);
+
+const camera = new Camera(videoElement, {
+  onFrame: async () => await hands.send({ image: videoElement }),
+  width: 640, height: 480
+});
+
+camera.start()
+  .then(() => statusEl.textContent = '📷 CAMERA READY — MAKE A SEAL!')
+  .catch(err => statusEl.textContent = '❌ CAMERA ERROR: ' + err.message);
+</script>
+</body>
+</html>
