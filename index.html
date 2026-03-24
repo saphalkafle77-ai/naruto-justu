@@ -64,7 +64,6 @@
       height: auto;
       transform: scaleX(-1);
     }
-
     #output-canvas {
       position: absolute;
       top: 0; left: 0;
@@ -72,37 +71,59 @@
       transform: scaleX(-1);
     }
 
-    /* ── Seal guide cards ── */
+    /* Only 3 seal cards now */
     #seal-guide {
       width: 640px;
       max-width: 100%;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
     }
 
     .seal-card {
       background: #0f172a;
       border: 1px solid #1e293b;
       border-radius: 10px;
-      padding: 12px 8px;
+      padding: 14px 10px;
       text-align: center;
       transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
-      cursor: default;
     }
-
-    /* When a seal is actively detected, this card lights up */
     .seal-card.triggered {
       border-color: #f97316;
-      box-shadow: 0 0 20px rgba(249,115,22,0.35);
-      transform: scale(1.04);
+      box-shadow: 0 0 24px rgba(249,115,22,0.4);
+      transform: scale(1.05);
     }
+    .seal-card .emoji { font-size: 1.8rem; }
+    .seal-card .name  { font-size: 0.65rem; color: #f97316; letter-spacing: 0.06em; margin-top: 6px; font-weight: bold; }
+    .seal-card .hint  { font-size: 0.6rem; color: #374151; margin-top: 5px; line-height: 1.6; }
+    .seal-card .thumb-note { font-size: 0.58rem; color: #1d4ed8; margin-top: 4px; }
 
-    .seal-card .emoji { font-size: 1.5rem; }
-    .seal-card .name  { font-size: 0.62rem; color: #f97316; letter-spacing: 0.06em; margin-top: 5px; font-weight: bold; }
-    .seal-card .hint  { font-size: 0.58rem; color: #374151; margin-top: 4px; line-height: 1.4; }
+    /* Finger + thumb debug bar */
+    #finger-debug {
+      width: 640px;
+      max-width: 100%;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 10px 16px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .finger { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .finger-label { font-size: 0.58rem; color: #374151; }
+    .finger-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #1f2937;
+      border: 1px solid #374151;
+      transition: background 0.15s;
+    }
+    .finger-dot.up      { background: #22c55e; border-color: #22c55e; }
+    /* Special color for thumb — helps you see thumb state clearly */
+    .finger-dot.thumb-out { background: #f97316; border-color: #f97316; }
 
-    /* ── Info bar ── */
     #info-bar {
       width: 640px;
       max-width: 100%;
@@ -113,43 +134,13 @@
       color: #374151;
     }
     #info-bar span { color: #22c55e; }
-
-    /* ── Finger state debug row ── */
-    #finger-debug {
-      width: 640px;
-      max-width: 100%;
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 0.68rem;
-      color: #4b5563;
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-    #finger-debug .finger {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-    }
-    #finger-debug .finger-label { font-size: 0.6rem; color: #374151; }
-    #finger-debug .finger-dot {
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: #1f2937;
-      border: 1px solid #374151;
-      transition: background 0.15s;
-    }
-    #finger-debug .finger-dot.up { background: #22c55e; border-color: #22c55e; }
   </style>
 </head>
 <body>
 
 <header>
   <h1>🍃 Naruto AR — Phase 2</h1>
-  <p>Seal recognition · Make a hand sign to activate</p>
+  <p>3 jutsu seals · Watch the thumb dot — orange = thumb out, green = other fingers up</p>
 </header>
 
 <div id="status">⏳ LOADING MEDIAPIPE...</div>
@@ -159,44 +150,69 @@
   <canvas id="output-canvas"></canvas>
 </div>
 
-<!-- Seal reference cards — light up when detected -->
 <div id="seal-guide">
+
   <div class="seal-card" id="card-clone">
     <div class="emoji">🌀</div>
     <div class="name">SHADOW CLONE</div>
-    <div class="hint">Touch index + middle fingertips</div>
+    <div class="hint">
+      Index finger UP ☝️<br/>
+      All others curled down<br/>
+      Thumb curled INWARD
+    </div>
+    <div class="thumb-note">🔵 thumb dot must be dark</div>
   </div>
+
   <div class="seal-card" id="card-rasengan">
     <div class="emoji">⚡</div>
     <div class="name">RASENGAN</div>
-    <div class="hint">Make a tight fist</div>
+    <div class="hint">
+      ALL 4 fingers extended ✋<br/>
+      Full open palm<br/>
+      Facing the camera
+    </div>
+    <div class="thumb-note">any thumb position</div>
   </div>
+
   <div class="seal-card" id="card-fireball">
     <div class="emoji">🔥</div>
-    <div class="name">FIREBALL</div>
-    <div class="hint">Open palm, all fingers out</div>
+    <div class="name">FIREBALL JUTSU</div>
+    <div class="hint">
+      Index finger UP ☝️<br/>
+      All others curled down<br/>
+      Thumb OUT / extended
+    </div>
+    <div class="thumb-note">🟠 thumb dot must be orange</div>
   </div>
-  <div class="seal-card" id="card-rat">
-    <div class="emoji">🐀</div>
-    <div class="name">RAT SEAL</div>
-    <div class="hint">Peace sign ✌️</div>
-  </div>
-  <div class="seal-card" id="card-ram">
-    <div class="emoji">🐏</div>
-    <div class="name">RAM SEAL</div>
-    <div class="hint">One finger pointing up ☝️</div>
-  </div>
+
 </div>
 
-<!-- Live finger state — great for debugging your seals -->
+<!-- Debug bar — watch these dots while making seals -->
 <div id="finger-debug">
-  <strong style="color:#4b5563;font-size:0.65rem;align-self:center;">FINGER STATE:</strong>
-  <div class="finger"><div class="finger-dot" id="dot-thumb"></div><div class="finger-label">THUMB</div></div>
-  <div class="finger"><div class="finger-dot" id="dot-index"></div><div class="finger-label">INDEX</div></div>
-  <div class="finger"><div class="finger-dot" id="dot-middle"></div><div class="finger-label">MIDDLE</div></div>
-  <div class="finger"><div class="finger-dot" id="dot-ring"></div><div class="finger-label">RING</div></div>
-  <div class="finger"><div class="finger-dot" id="dot-pinky"></div><div class="finger-label">PINKY</div></div>
-  <div style="align-self:center;color:#4b5563;font-size:0.6rem;">🟢 = extended &nbsp; ⚫ = curled</div>
+  <strong style="color:#4b5563;font-size:0.62rem;">LIVE STATE:</strong>
+  <div class="finger">
+    <div class="finger-dot" id="dot-thumb"></div>
+    <div class="finger-label">THUMB</div>
+  </div>
+  <div class="finger">
+    <div class="finger-dot" id="dot-index"></div>
+    <div class="finger-label">INDEX</div>
+  </div>
+  <div class="finger">
+    <div class="finger-dot" id="dot-middle"></div>
+    <div class="finger-label">MIDDLE</div>
+  </div>
+  <div class="finger">
+    <div class="finger-dot" id="dot-ring"></div>
+    <div class="finger-label">RING</div>
+  </div>
+  <div class="finger">
+    <div class="finger-dot" id="dot-pinky"></div>
+    <div class="finger-label">PINKY</div>
+  </div>
+  <div style="font-size:0.6rem;color:#374151;line-height:1.6;">
+    🟢 finger up &nbsp; 🟠 thumb out &nbsp; ⚫ curled
+  </div>
 </div>
 
 <div id="info-bar">
@@ -206,17 +222,6 @@
 </div>
 
 <script>
-// ================================================================
-// PHASE 2 — SEAL RECOGNITION
-// New things added on top of Phase 1:
-//   1. isFingerExtended() — checks if a finger is up or curled
-//   2. getFingerState()   — checks all 5 fingers at once
-//   3. detectSeal()       — matches finger pattern to a seal name
-//   4. drawHUD()          — prints seal name on the canvas
-//   5. highlightCard()    — lights up the matching seal card
-//   6. finger debug bar   — shows live finger state as green dots
-// ================================================================
-
 // ── Elements ───────────────────────────────────────────────────
 const videoElement    = document.getElementById('input-video');
 const canvasElement   = document.getElementById('output-canvas');
@@ -226,19 +231,15 @@ const fpsEl           = document.getElementById('fps-display');
 const handLabelEl     = document.getElementById('hand-label');
 const ctx             = canvasElement.getContext('2d');
 
-// Finger debug dots
-const dots = {
-  thumb:  document.getElementById('dot-thumb'),
-  index:  document.getElementById('dot-index'),
-  middle: document.getElementById('dot-middle'),
-  ring:   document.getElementById('dot-ring'),
-  pinky:  document.getElementById('dot-pinky'),
-};
+const dotThumb  = document.getElementById('dot-thumb');
+const dotIndex  = document.getElementById('dot-index');
+const dotMiddle = document.getElementById('dot-middle');
+const dotRing   = document.getElementById('dot-ring');
+const dotPinky  = document.getElementById('dot-pinky');
 
 let lastFrameTime = performance.now();
 let frameCount    = 0;
 
-// ── Landmark connections (Phase 1 — unchanged) ─────────────────
 const HAND_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4],
   [0,5],[5,6],[6,7],[7,8],
@@ -249,114 +250,104 @@ const HAND_CONNECTIONS = [
 ];
 
 // ================================================================
-// NEW IN PHASE 2 — GESTURE DETECTION LOGIC
+// GESTURE DETECTION — FIXED AND CLEAN
 // ================================================================
 
-// ── isFingerExtended ───────────────────────────────────────────
-// In screen coordinates, y=0 is at the TOP of the screen.
-// So if a fingertip has a SMALLER y than its knuckle,
-// the tip is HIGHER on screen → finger is pointing up (extended).
-// If tip.y > knuckle.y → finger is curled down.
-//
-// tipIndex  = landmark number of the fingertip
-// midIndex  = landmark number of the middle knuckle
-//
-// Landmark map:
-//   Thumb:  tip=4,  mid=3
-//   Index:  tip=8,  mid=6
-//   Middle: tip=12, mid=10
-//   Ring:   tip=16, mid=14
-//   Pinky:  tip=20, mid=18
-
-function isFingerExtended(lm, tipIndex, midIndex) {
-  return lm[tipIndex].y < lm[midIndex].y;
+// Is a finger (index/middle/ring/pinky) pointing up?
+// tip.y < knuckle.y → tip is higher on screen → finger is up
+function isFingerUp(lm, tipIdx, knuckleIdx) {
+  return lm[tipIdx].y < lm[knuckleIdx].y;
 }
 
-// ── getFingerState ─────────────────────────────────────────────
-// Runs isFingerExtended for all 5 fingers and returns an object.
-// We ignore thumb for most seals because it moves differently.
-
-function getFingerState(lm) {
-  return {
-    thumb:  isFingerExtended(lm, 4, 3),
-    index:  isFingerExtended(lm, 8, 6),
-    middle: isFingerExtended(lm, 12, 10),
-    ring:   isFingerExtended(lm, 16, 14),
-    pinky:  isFingerExtended(lm, 20, 18),
-  };
+// Is the THUMB extended outward (away from palm)?
+// We compare thumb tip (4) distance from wrist (0) vs thumb base (2).
+// When thumb is OUT: tip is far from wrist.
+// When thumb is CURLED IN: tip is close to the palm / index base.
+//
+// Better approach: compare thumb tip (4) x-position vs index MCP (5).
+// On a right hand: if thumb tip is clearly to the LEFT of index base → thumb out.
+// On a left hand:  if thumb tip is clearly to the RIGHT of index base → thumb out.
+// We use absolute horizontal distance to handle both hands.
+function isThumbOut(lm) {
+  // Distance between thumb tip (4) and index finger base knuckle (5)
+  // If this distance is large → thumb is spread out away from hand
+  // If small → thumb is tucked in
+  const dx = lm[4].x - lm[5].x;
+  const dy = lm[4].y - lm[5].y;
+  const distThumbToIndex = Math.sqrt(dx * dx + dy * dy);
+  // Threshold: 0.1 = 10% of screen width
+  // Thumb needs to be clearly away from index base to count as "out"
+  return distThumbToIndex > 0.1;
 }
 
-// ── distance ───────────────────────────────────────────────────
-// Returns how far apart two landmarks are.
-// Values are in 0.0–1.0 range (percentage of screen).
-// So 0.05 means "within 5% of screen width" = fingertips touching.
-
-function distance(a, b) {
+// Euclidean distance between any two landmarks
+function dist(a, b) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-// ── Seal detectors ─────────────────────────────────────────────
-// Each function returns true if the hand matches that seal.
-// The order in detectSeal() matters — more specific checks first.
+// ── THE 3 SEAL DETECTORS ───────────────────────────────────────
 
+// 🌀 SHADOW CLONE JUTSU (Ram seal — image 1)
+// Index UP, middle/ring/pinky DOWN, thumb CURLED INWARD
+// The thumb curled in is what separates this from Fireball
 function detectShadowClone(lm) {
-  // Index tip (8) and middle tip (12) are touching
-  return distance(lm[8], lm[12]) < 0.05;
+  const indexUp  = isFingerUp(lm, 8, 6);
+  const middleUp = isFingerUp(lm, 12, 10);
+  const ringUp   = isFingerUp(lm, 16, 14);
+  const pinkyUp  = isFingerUp(lm, 20, 18);
+  const thumbOut = isThumbOut(lm);
+
+  return indexUp && !middleUp && !ringUp && !pinkyUp && !thumbOut;
+  //     ☝️ up      others down                         thumb tucked in
 }
 
+// ⚡ RASENGAN
+// ALL 4 fingers extended = open palm ✋
+// Rasengan = chakra gathering in open hand
 function detectRasengan(lm) {
-  // All four fingers curled = closed fist
-  const f = getFingerState(lm);
-  return !f.index && !f.middle && !f.ring && !f.pinky;
+  const indexUp  = isFingerUp(lm, 8, 6);
+  const middleUp = isFingerUp(lm, 12, 10);
+  const ringUp   = isFingerUp(lm, 16, 14);
+  const pinkyUp  = isFingerUp(lm, 20, 18);
+
+  return indexUp && middleUp && ringUp && pinkyUp;
+  //     all 4 fingers pointing up = open palm
 }
 
+// 🔥 FIREBALL JUTSU (image 2 — finger near lips)
+// Index UP, middle/ring/pinky DOWN, thumb OUT/EXTENDED
+// Same finger layout as Shadow Clone BUT thumb is spread out
 function detectFireball(lm) {
-  // All four fingers fully extended = open palm
-  const f = getFingerState(lm);
-  return f.index && f.middle && f.ring && f.pinky;
+  const indexUp  = isFingerUp(lm, 8, 6);
+  const middleUp = isFingerUp(lm, 12, 10);
+  const ringUp   = isFingerUp(lm, 16, 14);
+  const pinkyUp  = isFingerUp(lm, 20, 18);
+  const thumbOut = isThumbOut(lm);
+
+  return indexUp && !middleUp && !ringUp && !pinkyUp && thumbOut;
+  //     ☝️ up    others down                          thumb spread out
 }
 
-function detectRat(lm) {
-  // Index + middle up, ring + pinky curled = peace sign ✌️
-  const f = getFingerState(lm);
-  return f.index && f.middle && !f.ring && !f.pinky;
-}
-
-function detectRam(lm) {
-  // Only index up = one finger pointing ☝️
-  const f = getFingerState(lm);
-  return f.index && !f.middle && !f.ring && !f.pinky;
-}
-
-// ── Master detector ────────────────────────────────────────────
-// Checks all seals and returns the first match.
-// Returns null if no seal is recognized.
-// NOTE: Order matters! Shadow Clone uses a distance check so
-// it must come before other checks that also have fingers up.
-
+// Master detector — Rasengan first because it's unambiguous (4 fingers)
+// then Fireball (uses thumbOut to separate from Shadow Clone)
+// then Shadow Clone last
 function detectSeal(lm) {
-  if (detectShadowClone(lm)) return 'clone';
   if (detectRasengan(lm))    return 'rasengan';
   if (detectFireball(lm))    return 'fireball';
-  if (detectRat(lm))         return 'rat';
-  if (detectRam(lm))         return 'ram';
+  if (detectShadowClone(lm)) return 'clone';
   return null;
 }
 
-// Seal display names
 const SEAL_LABELS = {
   clone:    'SHADOW CLONE JUTSU 🌀',
   rasengan: 'RASENGAN ⚡',
   fireball: 'FIRE STYLE: FIREBALL 🔥',
-  rat:      'RAT SEAL 🐀',
-  ram:      'RAM SEAL 🐏',
 };
 
 // ================================================================
-// DRAWING FUNCTIONS
+// DRAWING
 // ================================================================
 
-// ── drawLandmarks (Phase 1 — unchanged) ───────────────────────
 function drawLandmarks(lm) {
   lm.forEach((pt, i) => {
     const x = pt.x * canvasElement.width;
@@ -374,7 +365,6 @@ function drawLandmarks(lm) {
   });
 }
 
-// ── drawConnections (Phase 1 — unchanged) ─────────────────────
 function drawConnections(lm) {
   HAND_CONNECTIONS.forEach(([a, b]) => {
     ctx.beginPath();
@@ -386,73 +376,56 @@ function drawConnections(lm) {
   });
 }
 
-// ── drawHUD — NEW in Phase 2 ───────────────────────────────────
-// Draws a pill-shaped label at the top of the canvas
-// showing which seal is currently detected.
-
 function drawHUD(text) {
   ctx.font = 'bold 20px Courier New';
   const tw  = ctx.measureText(text).width;
   const pad = 16;
-  const x   = canvasElement.width / 2 - tw / 2 - pad;
 
-  // Background pill
-  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
   ctx.beginPath();
-  ctx.roundRect(x, 12, tw + pad * 2, 44, 10);
+  ctx.roundRect(canvasElement.width / 2 - tw / 2 - pad, 12, tw + pad * 2, 44, 10);
   ctx.fill();
 
-  // Orange border 
   ctx.strokeStyle = '#f97316';
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Text
   ctx.fillStyle = '#f97316';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, canvasElement.width / 2, 34);
 }
 
-// ── highlightCard — NEW in Phase 2 ────────────────────────────
-// Adds/removes the "triggered" CSS class on seal cards
-// so the correct card glows orange when a seal is detected.
+// Card highlight
+const cardMap = { clone: 'card-clone', rasengan: 'card-rasengan', fireball: 'card-fireball' };
+let lastCard = null;
 
-const cardMap = {
-  clone: 'card-clone', rasengan: 'card-rasengan',
-  fireball: 'card-fireball', rat: 'card-rat', ram: 'card-ram'
-};
-let lastHighlighted = null;
-
-function highlightCard(sealKey) {
-  // Remove glow from previously highlighted card
-  if (lastHighlighted) {
-    document.getElementById(cardMap[lastHighlighted])?.classList.remove('triggered');
-  }
-  // Add glow to new card
-  if (sealKey) {
-    document.getElementById(cardMap[sealKey])?.classList.add('triggered');
-  }
-  lastHighlighted = sealKey;
+function highlightCard(key) {
+  if (lastCard) document.getElementById(cardMap[lastCard])?.classList.remove('triggered');
+  if (key)      document.getElementById(cardMap[key])?.classList.add('triggered');
+  lastCard = key;
 }
 
-// ── updateFingerDebug — NEW in Phase 2 ────────────────────────
-// Updates the green/dark dots in the finger debug bar
-// so you can see in real time which fingers MediaPipe
-// thinks are extended. Very useful for tuning seal thresholds.
+// Update debug dots
+// Thumb dot: orange = out, dark = curled
+// Other dots: green = up, dark = curled
+function updateDebug(lm) {
+  const thumbOut = isThumbOut(lm);
+  dotThumb.classList.remove('up', 'thumb-out');
+  if (thumbOut) dotThumb.classList.add('thumb-out');
 
-function updateFingerDebug(lm) {
-  const f = getFingerState(lm);
-  Object.entries(f).forEach(([name, isUp]) => {
-    dots[name].classList.toggle('up', isUp);
+  dotIndex.classList.toggle('up',  isFingerUp(lm, 8, 6));
+  dotMiddle.classList.toggle('up', isFingerUp(lm, 12, 10));
+  dotRing.classList.toggle('up',   isFingerUp(lm, 16, 14));
+  dotPinky.classList.toggle('up',  isFingerUp(lm, 20, 18));
+}
+
+function clearDebug() {
+  [dotThumb, dotIndex, dotMiddle, dotRing, dotPinky].forEach(d => {
+    d.classList.remove('up', 'thumb-out');
   });
 }
 
-function clearFingerDebug() {
-  Object.values(dots).forEach(d => d.classList.remove('up'));
-}
-
-// ── FPS counter ───────────────────────────────────────────────
 function updateFPS() {
   frameCount++;
   const now = performance.now();
@@ -465,15 +438,12 @@ function updateFPS() {
 }
 
 // ================================================================
-// MAIN LOOP — called by MediaPipe ~30x per second
+// MAIN LOOP
 // ================================================================
 
 function onResults(results) {
-  // Sync canvas size to video
   canvasElement.width  = videoElement.videoWidth;
   canvasElement.height = videoElement.videoHeight;
-
-  // Clear previous frame
   ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   updateFPS();
 
@@ -483,7 +453,7 @@ function onResults(results) {
     statusEl.textContent        = '👋 SHOW YOUR HAND TO THE CAMERA';
     statusEl.className          = '';
     highlightCard(null);
-    clearFingerDebug();
+    clearDebug();
     return;
   }
 
@@ -495,44 +465,35 @@ function onResults(results) {
   let activeSeal = null;
 
   results.multiHandLandmarks.forEach(lm => {
-    // Phase 1 drawing
     drawConnections(lm);
     drawLandmarks(lm);
-
-    // Phase 2 — detect seal
+    updateDebug(lm);
     const seal = detectSeal(lm);
     if (seal) activeSeal = seal;
-
-    // Update finger debug dots (uses first hand found)
-    updateFingerDebug(lm);
   });
 
   if (activeSeal) {
-    // Seal detected — show HUD, highlight card, update status
     drawHUD(SEAL_LABELS[activeSeal]);
     highlightCard(activeSeal);
-    statusEl.textContent = '🔥 SEAL: ' + SEAL_LABELS[activeSeal];
+    statusEl.textContent = '🔥 ' + SEAL_LABELS[activeSeal];
     statusEl.className   = 'jutsu';
   } else {
-    // Hand visible but no seal matched
     highlightCard(null);
     statusEl.textContent = '✅ HAND TRACKED — TRY A SEAL!';
     statusEl.className   = 'active';
   }
 }
 
-// ── MediaPipe setup (same as Phase 1) ─────────────────────────
+// ── MediaPipe ─────────────────────────────────────────────────
 const hands = new Hands({
   locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
 });
-
 hands.setOptions({
   maxNumHands: 2,
   modelComplexity: 1,
   minDetectionConfidence: 0.7,
   minTrackingConfidence: 0.6,
 });
-
 hands.onResults(onResults);
 
 const camera = new Camera(videoElement, {
@@ -542,8 +503,8 @@ const camera = new Camera(videoElement, {
 });
 
 camera.start()
-  .then(() => statusEl.textContent = '📷 CAMERA READY — MAKE A SEAL!')
-  .catch(err => statusEl.textContent = '❌ CAMERA ERROR: ' + err.message);
+  .then(() => statusEl.textContent = '📷 READY — MAKE A SEAL!')
+  .catch(err => statusEl.textContent = '❌ ERROR: ' + err.message);
 </script>
 </body>
 </html>
