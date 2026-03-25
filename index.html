@@ -3,508 +3,96 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Naruto AR — Phase 2: Seal Recognition</title>
+  <title>Naruto AR</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
 
+  <!--
+    MediaPipe libraries loaded from CDN.
+    Order matters — camera_utils must load first.
+  -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
 
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: #06060c;
-      color: #e8e4d0;
-      font-family: 'Courier New', monospace;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-      gap: 14px;
-    }
-
-    header { text-align: center; }
-    header h1 {
-      font-size: 1.8rem;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      color: #f97316;
-      text-transform: uppercase;
-      text-shadow: 0 0 30px rgba(249,115,22,0.4);
-    }
-    header p { font-size: 0.78rem; color: #4b5563; margin-top: 4px; }
-
-    #status {
-      font-size: 0.72rem;
-      padding: 5px 16px;
-      border-radius: 20px;
-      border: 1px solid #1f2937;
-      color: #6b7280;
-      background: #0f172a;
-      letter-spacing: 0.08em;
-      transition: all 0.3s;
-    }
-    #status.active { border-color: #22c55e; color: #22c55e; background: #052e16; }
-    #status.jutsu  { border-color: #f97316; color: #f97316; background: #1c0a00; }
-
-    #camera-container {
-      position: relative;
-      width: 640px;
-      max-width: 100%;
-      border-radius: 14px;
-      overflow: hidden;
-      border: 2px solid #1e293b;
-      box-shadow: 0 0 60px rgba(249,115,22,0.12);
-    }
-
-    #input-video {
-      display: block;
-      width: 100%;
-      height: auto;
-      transform: scaleX(-1);
-    }
-    #output-canvas {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      transform: scaleX(-1);
-    }
-
-    /* Only 3 seal cards now */
-    #seal-guide {
-      width: 640px;
-      max-width: 100%;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-
-    .seal-card {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 10px;
-      padding: 14px 10px;
-      text-align: center;
-      transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
-    }
-    .seal-card.triggered {
-      border-color: #f97316;
-      box-shadow: 0 0 24px rgba(249,115,22,0.4);
-      transform: scale(1.05);
-    }
-    .seal-card .emoji { font-size: 1.8rem; }
-    .seal-card .name  { font-size: 0.65rem; color: #f97316; letter-spacing: 0.06em; margin-top: 6px; font-weight: bold; }
-    .seal-card .hint  { font-size: 0.6rem; color: #374151; margin-top: 5px; line-height: 1.6; }
-    .seal-card .thumb-note { font-size: 0.58rem; color: #1d4ed8; margin-top: 4px; }
-
-    /* Finger + thumb debug bar */
-    #finger-debug {
-      width: 640px;
-      max-width: 100%;
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 10px;
-      padding: 10px 16px;
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .finger { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-    .finger-label { font-size: 0.58rem; color: #374151; }
-    .finger-dot {
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: #1f2937;
-      border: 1px solid #374151;
-      transition: background 0.15s;
-    }
-    .finger-dot.up      { background: #22c55e; border-color: #22c55e; }
-    /* Special color for thumb — helps you see thumb state clearly */
-    .finger-dot.thumb-out { background: #f97316; border-color: #f97316; }
-
-    #info-bar {
-      width: 640px;
-      max-width: 100%;
-      display: flex;
-      gap: 10px;
-      justify-content: space-between;
-      font-size: 0.68rem;
-      color: #374151;
-    }
-    #info-bar span { color: #22c55e; }
-  </style>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-<header>
-  <h1>🍃 Naruto AR — Phase 2</h1>
-  <p>3 jutsu seals · Watch the thumb dot — orange = thumb out, green = other fingers up</p>
-</header>
-
-<div id="status">⏳ LOADING MEDIAPIPE...</div>
-
-<div id="camera-container">
-  <video id="input-video" playsinline></video>
-  <canvas id="output-canvas"></canvas>
-</div>
-
-<div id="seal-guide">
-
-  <div class="seal-card" id="card-clone">
-    <div class="emoji">🌀</div>
-    <div class="name">SHADOW CLONE</div>
-    <div class="hint">
-      Index finger UP ☝️<br/>
-      All others curled down<br/>
-      Thumb curled INWARD
+  <header>
+    <div class="header-top">
+      <div class="konoha-symbol">卍</div>
+      <h1>NARUTO JUTSU AR</h1>
+      <div class="konoha-symbol">卍</div>
     </div>
-    <div class="thumb-note">🔵 thumb dot must be dark</div>
+    <p>HIDDEN LEAF VILLAGE · JUTSU RECOGNITION SYSTEM</p>
+  </header>
+
+  <div id="status">⏳ LOADING AI MODELS...</div>
+
+  <div id="camera-container">
+    <div id="jutsu-count-overlay">JUTSU: <span id="jutsu-count">0</span></div>
+    <button id="record-btn" onclick="toggleRecord()">
+      <div class="rec-dot"></div>
+      <span id="rec-label">REC</span>
+    </button>
+
+    <!--
+      IMPORTANT: video plays raw webcam feed.
+      Canvas sits on top as transparent overlay.
+      MediaPipe reads from video element directly.
+      We never draw video onto canvas — that breaks tracking.
+    -->
+    <video id="input-video" playsinline></video>
+    <canvas id="output-canvas"></canvas>
   </div>
 
-  <div class="seal-card" id="card-rasengan">
-    <div class="emoji">⚡</div>
-    <div class="name">RASENGAN</div>
-    <div class="hint">
-      ALL 4 fingers extended ✋<br/>
-      Full open palm<br/>
-      Facing the camera
+  <div id="bottom-row">
+    <div id="seal-guide">
+      <div class="seal-card" id="card-rasengan">
+        <div class="emoji">⚡</div>
+        <div class="name">RASENGAN</div>
+        <div class="hint">Open palm ✋<br/>all 4 fingers out</div>
+      </div>
+      <div class="seal-card" id="card-clone">
+        <div class="emoji">🌀</div>
+        <div class="name">SHADOW CLONE</div>
+        <div class="hint">Both hands up<br/>both index fingers ☝️☝️</div>
+      </div>
+      <div class="seal-card" id="card-fireball">
+        <div class="emoji">🔥</div>
+        <div class="name">FIREBALL</div>
+        <div class="hint">One index up ☝️<br/>then open mouth 🔥</div>
+      </div>
     </div>
-    <div class="thumb-note">any thumb position</div>
-  </div>
 
-  <div class="seal-card" id="card-fireball">
-    <div class="emoji">🔥</div>
-    <div class="name">FIREBALL JUTSU</div>
-    <div class="hint">
-      Index finger UP ☝️<br/>
-      All others curled down<br/>
-      Thumb OUT / extended
+    <div id="history-panel">
+      <h3>⚡ Jutsu Log</h3>
+      <div id="history-list">
+        <div id="history-empty">No jutsu yet...</div>
+      </div>
     </div>
-    <div class="thumb-note">🟠 thumb dot must be orange</div>
   </div>
 
-</div>
+  <div id="rec-indicator">● RECORDING IN PROGRESS</div>
 
-<!-- Debug bar — watch these dots while making seals -->
-<div id="finger-debug">
-  <strong style="color:#4b5563;font-size:0.62rem;">LIVE STATE:</strong>
-  <div class="finger">
-    <div class="finger-dot" id="dot-thumb"></div>
-    <div class="finger-label">THUMB</div>
+  <div id="debug-bar">
+    <strong style="color:var(--muted);font-size:0.58rem;">SENSOR:</strong>
+    <div class="dbg-item"><div class="dbg-dot" id="dbg-palm"></div><div class="dbg-label">PALM</div></div>
+    <div class="dbg-item"><div class="dbg-dot" id="dbg-index"></div><div class="dbg-label">INDEX</div></div>
+    <div class="dbg-item"><div class="dbg-dot" id="dbg-twohand"></div><div class="dbg-label">2 HANDS</div></div>
+    <div class="dbg-item"><div class="dbg-dot" id="dbg-mouth"></div><div class="dbg-label">MOUTH</div></div>
+    <div class="dbg-item"><div class="dbg-dot" id="dbg-seg"></div><div class="dbg-label">SEG READY</div></div>
+    <div style="font-size:0.55rem;color:var(--muted);margin-left:auto;">🟢 on | 🔵 2h | 🟣 mouth</div>
   </div>
-  <div class="finger">
-    <div class="finger-dot" id="dot-index"></div>
-    <div class="finger-label">INDEX</div>
+
+  <div id="info-bar">
+    <div>FPS: <span id="fps-display">--</span></div>
+    <div>HANDS: <span id="hand-label">0</span></div>
+    <div>MOUTH: <span id="mouth-label">closed</span></div>
+    <div>SESSION: <span id="session-time">00:00</span></div>
   </div>
-  <div class="finger">
-    <div class="finger-dot" id="dot-middle"></div>
-    <div class="finger-label">MIDDLE</div>
-  </div>
-  <div class="finger">
-    <div class="finger-dot" id="dot-ring"></div>
-    <div class="finger-label">RING</div>
-  </div>
-  <div class="finger">
-    <div class="finger-dot" id="dot-pinky"></div>
-    <div class="finger-label">PINKY</div>
-  </div>
-  <div style="font-size:0.6rem;color:#374151;line-height:1.6;">
-    🟢 finger up &nbsp; 🟠 thumb out &nbsp; ⚫ curled
-  </div>
-</div>
 
-<div id="info-bar">
-  <div>FPS: <span id="fps-display">--</span></div>
-  <div>Landmarks: <span id="landmark-count">0</span></div>
-  <div>Hand: <span id="hand-label">none</span></div>
-</div>
-
-<script>
-// ── Elements ───────────────────────────────────────────────────
-const videoElement    = document.getElementById('input-video');
-const canvasElement   = document.getElementById('output-canvas');
-const statusEl        = document.getElementById('status');
-const landmarkCountEl = document.getElementById('landmark-count');
-const fpsEl           = document.getElementById('fps-display');
-const handLabelEl     = document.getElementById('hand-label');
-const ctx             = canvasElement.getContext('2d');
-
-const dotThumb  = document.getElementById('dot-thumb');
-const dotIndex  = document.getElementById('dot-index');
-const dotMiddle = document.getElementById('dot-middle');
-const dotRing   = document.getElementById('dot-ring');
-const dotPinky  = document.getElementById('dot-pinky');
-
-let lastFrameTime = performance.now();
-let frameCount    = 0;
-
-const HAND_CONNECTIONS = [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [0,9],[9,10],[10,11],[11,12],
-  [0,13],[13,14],[14,15],[15,16],
-  [0,17],[17,18],[18,19],[19,20],
-  [5,9],[9,13],[13,17]
-];
-
-// ================================================================
-// GESTURE DETECTION — FIXED AND CLEAN
-// ================================================================
-
-// Is a finger (index/middle/ring/pinky) pointing up?
-// tip.y < knuckle.y → tip is higher on screen → finger is up
-function isFingerUp(lm, tipIdx, knuckleIdx) {
-  return lm[tipIdx].y < lm[knuckleIdx].y;
-}
-
-// Is the THUMB extended outward (away from palm)?
-// We compare thumb tip (4) distance from wrist (0) vs thumb base (2).
-// When thumb is OUT: tip is far from wrist.
-// When thumb is CURLED IN: tip is close to the palm / index base.
-//
-// Better approach: compare thumb tip (4) x-position vs index MCP (5).
-// On a right hand: if thumb tip is clearly to the LEFT of index base → thumb out.
-// On a left hand:  if thumb tip is clearly to the RIGHT of index base → thumb out.
-// We use absolute horizontal distance to handle both hands.
-function isThumbOut(lm) {
-  // Distance between thumb tip (4) and index finger base knuckle (5)
-  // If this distance is large → thumb is spread out away from hand
-  // If small → thumb is tucked in
-  const dx = lm[4].x - lm[5].x;
-  const dy = lm[4].y - lm[5].y;
-  const distThumbToIndex = Math.sqrt(dx * dx + dy * dy);
-  // Threshold: 0.1 = 10% of screen width
-  // Thumb needs to be clearly away from index base to count as "out"
-  return distThumbToIndex > 0.1;
-}
-
-// Euclidean distance between any two landmarks
-function dist(a, b) {
-  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-}
-
-// ── THE 3 SEAL DETECTORS ───────────────────────────────────────
-
-// 🌀 SHADOW CLONE JUTSU (Ram seal — image 1)
-// Index UP, middle/ring/pinky DOWN, thumb CURLED INWARD
-// The thumb curled in is what separates this from Fireball
-function detectShadowClone(lm) {
-  const indexUp  = isFingerUp(lm, 8, 6);
-  const middleUp = isFingerUp(lm, 12, 10);
-  const ringUp   = isFingerUp(lm, 16, 14);
-  const pinkyUp  = isFingerUp(lm, 20, 18);
-  const thumbOut = isThumbOut(lm);
-
-  return indexUp && !middleUp && !ringUp && !pinkyUp && !thumbOut;
-  //     ☝️ up      others down                         thumb tucked in
-}
-
-// ⚡ RASENGAN
-// ALL 4 fingers extended = open palm ✋
-// Rasengan = chakra gathering in open hand
-function detectRasengan(lm) {
-  const indexUp  = isFingerUp(lm, 8, 6);
-  const middleUp = isFingerUp(lm, 12, 10);
-  const ringUp   = isFingerUp(lm, 16, 14);
-  const pinkyUp  = isFingerUp(lm, 20, 18);
-
-  return indexUp && middleUp && ringUp && pinkyUp;
-  //     all 4 fingers pointing up = open palm
-}
-
-// 🔥 FIREBALL JUTSU (image 2 — finger near lips)
-// Index UP, middle/ring/pinky DOWN, thumb OUT/EXTENDED
-// Same finger layout as Shadow Clone BUT thumb is spread out
-function detectFireball(lm) {
-  const indexUp  = isFingerUp(lm, 8, 6);
-  const middleUp = isFingerUp(lm, 12, 10);
-  const ringUp   = isFingerUp(lm, 16, 14);
-  const pinkyUp  = isFingerUp(lm, 20, 18);
-  const thumbOut = isThumbOut(lm);
-
-  return indexUp && !middleUp && !ringUp && !pinkyUp && thumbOut;
-  //     ☝️ up    others down                          thumb spread out
-}
-
-// Master detector — Rasengan first because it's unambiguous (4 fingers)
-// then Fireball (uses thumbOut to separate from Shadow Clone)
-// then Shadow Clone last
-function detectSeal(lm) {
-  if (detectRasengan(lm))    return 'rasengan';
-  if (detectFireball(lm))    return 'fireball';
-  if (detectShadowClone(lm)) return 'clone';
-  return null;
-}
-
-const SEAL_LABELS = {
-  clone:    'SHADOW CLONE JUTSU 🌀',
-  rasengan: 'RASENGAN ⚡',
-  fireball: 'FIRE STYLE: FIREBALL 🔥',
-};
-
-// ================================================================
-// DRAWING
-// ================================================================
-
-function drawLandmarks(lm) {
-  lm.forEach((pt, i) => {
-    const x = pt.x * canvasElement.width;
-    const y = pt.y * canvasElement.height;
-    const color = (i === 0 || i === 9) ? '#22c55e'
-                : i <= 4               ? '#a78bfa'
-                                       : '#f97316';
-    ctx.beginPath();
-    ctx.arc(x, y, i === 0 ? 8 : 5, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  });
-}
-
-function drawConnections(lm) {
-  HAND_CONNECTIONS.forEach(([a, b]) => {
-    ctx.beginPath();
-    ctx.moveTo(lm[a].x * canvasElement.width, lm[a].y * canvasElement.height);
-    ctx.lineTo(lm[b].x * canvasElement.width, lm[b].y * canvasElement.height);
-    ctx.strokeStyle = 'rgba(56,189,248,0.65)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  });
-}
-
-function drawHUD(text) {
-  ctx.font = 'bold 20px Courier New';
-  const tw  = ctx.measureText(text).width;
-  const pad = 16;
-
-  ctx.fillStyle = 'rgba(0,0,0,0.75)';
-  ctx.beginPath();
-  ctx.roundRect(canvasElement.width / 2 - tw / 2 - pad, 12, tw + pad * 2, 44, 10);
-  ctx.fill();
-
-  ctx.strokeStyle = '#f97316';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = '#f97316';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, canvasElement.width / 2, 34);
-}
-
-// Card highlight
-const cardMap = { clone: 'card-clone', rasengan: 'card-rasengan', fireball: 'card-fireball' };
-let lastCard = null;
-
-function highlightCard(key) {
-  if (lastCard) document.getElementById(cardMap[lastCard])?.classList.remove('triggered');
-  if (key)      document.getElementById(cardMap[key])?.classList.add('triggered');
-  lastCard = key;
-}
-
-// Update debug dots
-// Thumb dot: orange = out, dark = curled
-// Other dots: green = up, dark = curled
-function updateDebug(lm) {
-  const thumbOut = isThumbOut(lm);
-  dotThumb.classList.remove('up', 'thumb-out');
-  if (thumbOut) dotThumb.classList.add('thumb-out');
-
-  dotIndex.classList.toggle('up',  isFingerUp(lm, 8, 6));
-  dotMiddle.classList.toggle('up', isFingerUp(lm, 12, 10));
-  dotRing.classList.toggle('up',   isFingerUp(lm, 16, 14));
-  dotPinky.classList.toggle('up',  isFingerUp(lm, 20, 18));
-}
-
-function clearDebug() {
-  [dotThumb, dotIndex, dotMiddle, dotRing, dotPinky].forEach(d => {
-    d.classList.remove('up', 'thumb-out');
-  });
-}
-
-function updateFPS() {
-  frameCount++;
-  const now = performance.now();
-  const elapsed = now - lastFrameTime;
-  if (elapsed >= 1000) {
-    fpsEl.textContent = Math.round(frameCount / (elapsed / 1000));
-    frameCount    = 0;
-    lastFrameTime = now;
-  }
-}
-
-// ================================================================
-// MAIN LOOP
-// ================================================================
-
-function onResults(results) {
-  canvasElement.width  = videoElement.videoWidth;
-  canvasElement.height = videoElement.videoHeight;
-  ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-  updateFPS();
-
-  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-    landmarkCountEl.textContent = '0';
-    handLabelEl.textContent     = 'none';
-    statusEl.textContent        = '👋 SHOW YOUR HAND TO THE CAMERA';
-    statusEl.className          = '';
-    highlightCard(null);
-    clearDebug();
-    return;
-  }
-
-  landmarkCountEl.textContent = results.multiHandLandmarks.length * 21;
-  handLabelEl.textContent = results.multiHandedness
-    ? results.multiHandedness.map(h => h.label).join(' + ')
-    : 'detected';
-
-  let activeSeal = null;
-
-  results.multiHandLandmarks.forEach(lm => {
-    drawConnections(lm);
-    drawLandmarks(lm);
-    updateDebug(lm);
-    const seal = detectSeal(lm);
-    if (seal) activeSeal = seal;
-  });
-
-  if (activeSeal) {
-    drawHUD(SEAL_LABELS[activeSeal]);
-    highlightCard(activeSeal);
-    statusEl.textContent = '🔥 ' + SEAL_LABELS[activeSeal];
-    statusEl.className   = 'jutsu';
-  } else {
-    highlightCard(null);
-    statusEl.textContent = '✅ HAND TRACKED — TRY A SEAL!';
-    statusEl.className   = 'active';
-  }
-}
-
-// ── MediaPipe ─────────────────────────────────────────────────
-const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-});
-hands.setOptions({
-  maxNumHands: 2,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.7,
-  minTrackingConfidence: 0.6,
-});
-hands.onResults(onResults);
-
-const camera = new Camera(videoElement, {
-  onFrame: async () => await hands.send({ image: videoElement }),
-  width: 640,
-  height: 480
-});
-
-camera.start()
-  .then(() => statusEl.textContent = '📷 READY — MAKE A SEAL!')
-  .catch(err => statusEl.textContent = '❌ ERROR: ' + err.message);
-</script>
+  <script src="app.js"></script>
 </body>
 </html>
